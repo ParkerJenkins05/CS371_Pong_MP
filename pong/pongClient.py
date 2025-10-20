@@ -10,6 +10,8 @@ import pygame
 import tkinter as tk
 import sys
 import socket
+from PIL import Image, ImageTk
+from pathlib import Path
 
 from assets.code.helperCode import *
 
@@ -196,7 +198,11 @@ def startScreen():
     app = tk.Tk()
     app.title("Server Info")
 
-    image = tk.PhotoImage(file="./assets/images/logo.png")
+    img_path = Path(__file__).resolve().parents[1] / "assets" / "images" / "logo.png"
+    img = Image.open(img_path)
+
+    image = ImageTk.PhotoImage(img)
+    #image = tk.PhotoImage(file="./assets/images/logo.png")
 
     titleLabel = tk.Label(image=image)
     titleLabel.grid(column=0, row=0, columnspan=2)
