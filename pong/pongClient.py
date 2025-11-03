@@ -189,7 +189,7 @@ def joinServer(ip:str, port:str, errorLabel:tk.Label, app:tk.Tk) -> None:
 
     # Close this window and start the game with the info passed to you from the server
     #app.withdraw()     # Hides the window (we'll kill it later)
-    #playGame(screenWidth, screenHeight, ("left"|"right"), client)  # User will be either left or right paddle
+    #playGame(screenWidth, screenHeight, ("left"|"right"|"spectator"), client)  # User will be either left or right paddle
     #app.quit()         # Kills the window
 
 
@@ -202,7 +202,6 @@ def startScreen():
     img = Image.open(img_path)
 
     image = ImageTk.PhotoImage(img)
-    #image = tk.PhotoImage(file="./assets/images/logo.png")
 
     titleLabel = tk.Label(image=image)
     titleLabel.grid(column=0, row=0, columnspan=2)
