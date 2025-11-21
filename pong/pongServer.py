@@ -6,12 +6,6 @@
 # Misc:                     <Not Required.  Anything else you might want to include>
 # =================================================================================================
 
-#TO DO
-#1) get gamedata func
-#2) parse game data to update global data.
-#3) send data to each paddle and spectator func.
-#4) finish establishing server (socket programming)
-
 import socket
 import threading
 import json
@@ -36,9 +30,9 @@ game_data = {
 }
 
 #Store ball pos and prospective scores to find most updated 
-left_ball_pos : list[int] = list(game_data["ball_x"], game_data["ball_y"])
-right_ball_pos : list[int] = list(game_data["ball_x"], game_data["ball_y"])
-scores : list[list[int]] = list([0,0], [0,0])
+left_ball_pos : list[int] = [game_data["ball_x"], game_data["ball_y"]]
+right_ball_pos : list[int] = [game_data["ball_x"], game_data["ball_y"]]
+scores : list[list[int]] = [[0,0], [0,0]]
 
 #Create a mutex
 mutex = threading.Lock()
@@ -55,8 +49,8 @@ def acceptor() -> None:
             client_sock, client_addr = sock.accept()
             
             with mutex:
-                client_sockets.add(client_sock)
-                threading.Thread( target = handle_clients, args = client_sock).start()
+                client_sockets.append(client_sock)
+                threading.Thread( target = handle_clients, args = (client_sock,)).start()
         except socket.timeout:
             pass
 
@@ -81,6 +75,7 @@ def handle_clients( conn : socket.socket) -> None:
 
         else:
             spec_sock.append(conn)
+            paddle_side = "spectator"
         
     init_game_state : dict = {
         "screen_width" : SCREEN_WIDTH,
@@ -88,41 +83,54 @@ def handle_clients( conn : socket.socket) -> None:
         "paddle" : paddle_side
     }
     try:
-        conn.send
-        while True:
-            
-            conn.sendall(json.dumps(init_game_state).encode("utf-8"))
+        conn.sendall(json.dumps(init_game_state).encode("utf-8"))
+        
+        while True:    
 
             if conn not in spec_sock:
                 msg : str = conn.recv(1024) #Recieve Data from client
 
+                if not msg:
+                    break
+
                 data = json.loads(msg.decode("utf-8"))
 
-                if conn == left_sock:
-                    game_data["left_paddle_y"] =  data["paddle_y"]
-                    game_data["left_sync"] = data["sync"]
-                    left_ball_pos[0] = data["ball_x"]
-                    left_ball_pos[1] = data["ball_y"]
-                    scores[0][0] = data["lscore"]
-                    scores[0][1] = data["rscore"]
-                elif conn == right_sock:
-                    game_data["right_paddle_y"] =  data["paddle_y"]
-                    game_data["right_sync"] = data["sync"]
-                    right_ball_pos[0] = data["ball_x"]
-                    right_ball_pos[1] = data["ball_y"]
-                    scores[1][0] = data["lscore"]
-                    scores[1][1] = data["rscore"]
+                with mutex:
+
+                    if conn == left_sock:
+                        game_data["left_paddle_y"] =  data["paddle_y"]
+                        game_data["left_sync"] = data["sync"]
+                        left_ball_pos[0] = data["ball_x"]
+                        left_ball_pos[1] = data["ball_y"]
+                        scores[0][0] = data["lscore"]
+                        scores[0][1] = data["rscore"]
+                    elif conn == right_sock:
+                        game_data["right_paddle_y"] =  data["paddle_y"]
+                        game_data["right_sync"] = data["sync"]
+                        right_ball_pos[0] = data["ball_x"]
+                        right_ball_pos[1] = data["ball_y"]
+                        scores[1][0] = data["lscore"]
+                        scores[1][1] = data["rscore"]
 
             elif conn in spec_sock:
-                conn.send(data) #ADD CORRECT LINE
+                msg = conn.recv(1024)
 
-            if not msg:
-                break
-
+                if not msg:
+                    break
         #Continue from here to handle clients (reecieve data and send data w funcs and logic to sync)
 
     finally:
-        client_sockets.remove(conn)
+        with mutex:
+           if conn == left_sock:
+               left_sock = None
+           elif conn == right_sock:
+               right_sock = None
+           elif conn in spec_sock:
+               spec_sock.remove(conn)
+           
+           if conn in client_sockets:
+               client_sockets.remove(conn)
+       
         conn.close()
 
 def update_game_vals() -> None:
@@ -132,7 +140,7 @@ def update_game_vals() -> None:
     # Post: This method changes the game state and transmits it to the clients
 
     while True:
-        time.wait(1/60) #Update 60 times per second, can change update rate in this line
+        time.sleep(1/60) #Update 60 times per second, can change update rate in this line
 
         with mutex:
 
@@ -149,17 +157,20 @@ def update_game_vals() -> None:
                 game_data["left_score"] = scores[1][0]
                 game_data["right_score"] = scores[1][1]
 
-            #Send the game state to the players
-            if left_sock:
-                left_sock.sendall(json.dumps(game_data).encode("utf-8"))
-            if right_sock:
-                right_sock.sendall(json.dumps(game_data).encode("utf-8"))
+        #Send the game state to the players
+        if left_sock:
+            left_sock.sendall(json.dumps(game_data).encode("utf-8"))
+        if right_sock:
+            right_sock.sendall(json.dumps(game_data).encode("utf-8"))
+        if spec_sock:
+            for c in spec_sock:
+                c.sendall(json.dumps(game_data).encode("utf-8"))
 
 
 #These will store the sockets for each role
-left_sock : str = None
-right_sock : str = None
-spec_sock : list[str] = list()
+left_sock : socket.socket = None
+right_sock : socket.socket = None
+spec_sock : list[socket.socket] = list()
 
 #This stores the needed IP and Port to establish a server
 LAN_IP : str = "0.0.0.0"
@@ -175,38 +186,10 @@ client_sockets : list[socket.socket] = list()
 #Listen to the socket for people attempting to connect and start a thread to accept them
 sock.listen()
 threading.Thread(target = acceptor).start()
+threading.Thread(target=update_game_vals, daemon=True).start()
 
-#Ensure all connections are closed
-for c in client_sockets:
-    c.close()
-
-left_sock = ""
-right_sock = ""
-spec_sock.clear()
-
-
-
-
-#Complete the handle_clients function:
-
-#Send initial game info to clients (screen dimensions, paddle assignment "left" or "right")
-#Parse incoming game data from clients (paddle position, ball position, score, sync)
-#Update the global gameState dictionary with received data
-#Broadcast updated game state to both clients
-
-
-#Create helper functions:
-
-#Function to send game state updates to clients
-#Function to parse incoming client data
-#Logic to handle sync numbers (determine which client is authoritative for ball/score)
-
-
-#Handle client disconnections:
-
-#Clean up when a client disconnects
-#Remove from client_sockets list
-#Reset left_sock/right_sock to None
-
-
-
+try:
+    while True:
+       time.sleep(1)
+except KeyboardInterrupt:
+    sock.close()
