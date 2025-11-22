@@ -46,7 +46,7 @@ def recv_loop(client:socket.socket) -> None:
                     break
                 buffer = buffer[idx:].lstrip()
 
-                with stateLock:
+                with state_lock:
                     for k in server_state:
                         if k in obj:
                             server_state[k] = obj[k]
