@@ -242,6 +242,7 @@ def joinServer(ip:str, port:str, errorLabel:tk.Label, app:tk.Tk) -> None:
     
     # Create a socket and connect to the server
     # You don't have to use SOCK_STREAM, use what you think is best
+    # create TCP socket
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     #get the required information from your server (screen width, height & player paddle, "left or "right")
@@ -284,9 +285,12 @@ def startScreen():
     img_path = Path(__file__).resolve().parents[1] / "pong" / "assets" / "images" / "logo.png"
     img = Image.open(img_path)
 
-    image = ImageTk.PhotoImage(img)
+    pil_img = Image.open(img_path)
+    image = ImageTk.PhotoImage(pil_img)
+    app.logo_image = image  # keep reference so it isn't GC'ed
+    titleLabel = tk.Label(app, image=image)
 
-    titleLabel = tk.Label(image=image)
+    #titleLabel = tk.Label(image=image)
     titleLabel.grid(column=0, row=0, columnspan=2)
 
     ipLabel = tk.Label(text="Server IP:")
@@ -308,7 +312,6 @@ def startScreen():
     joinButton.grid(column=0, row=3, columnspan=2)
 
     app.mainloop()
-
 if __name__ == "__main__":
     startScreen()
     

@@ -10,7 +10,6 @@ import socket
 import threading
 import json
 import time
-from threading import Lock
 
 #Initialization variables used to create game state and initialize the clients
 SCREEN_WIDTH : int = 480
@@ -61,8 +60,8 @@ def handle_clients( conn : socket.socket) -> None:
 
     global left_sock, right_sock, spec_sock #define as global so the value is non local
     paddle_side : str
-    left_sync : int
-    right_sync : int
+    global left_sync
+    global right_sync
 
     with mutex: #Place mutex lock to ensure only one in each paddle, rest are spectators
         
@@ -70,13 +69,13 @@ def handle_clients( conn : socket.socket) -> None:
         if left_sock is None:
             left_sock = conn
             paddle_side = "left"
-            printf("LEFT SIDE IS: {left_sock}")
+            print(f"LEFT SIDE IS: {left_sock}")
 
         #Add second connection to right side
         elif right_sock is None:
             right_sock = conn
             paddle_side = "right"
-            printf("RIGHT SIDE IS: {right_sock}")
+            print(f"RIGHT SIDE IS: {right_sock}")
 
         #Add everyone else to the spectators
         else:
@@ -156,39 +155,41 @@ def update_game_vals() -> None:
 
     while True:
         time.sleep(1/60) #Update 60 times per second, can change update rate in this line
-
-        with mutex:
+        if left_sync != None and right_sync != None:
+            with mutex:
 
             #If the left sync is higher, it is ahead, so use its values for score and ball position
-            if game_data["left_sync"] > game_data["right_sync"]:
-                game_data["ball_x"] = left_ball_pos[0]
-                game_data["ball_y"] = left_ball_pos[1]
-                game_data["left_score"] = scores[0][0]
-                game_data["right_score"] = scores[0][1]
+                if left_sync > right_sync:
+                    game_data["ball_x"] = left_ball_pos[0]
+                    game_data["ball_y"] = left_ball_pos[1]
+                    game_data["left_score"] = scores[0][0]
+                    game_data["right_score"] = scores[0][1]
             #If the right sync is higher, it is ahead, so use its values for score and ball position
-            else: 
-                game_data["ball_x"] = right_ball_pos[0]
-                game_data["ball_y"] = right_ball_pos[1]
-                game_data["left_score"] = scores[1][0]
-                game_data["right_score"] = scores[1][1]
+                else: 
+                    game_data["ball_x"] = right_ball_pos[0]
+                    game_data["ball_y"] = right_ball_pos[1]
+                    game_data["left_score"] = scores[1][0]
+                    game_data["right_score"] = scores[1][1]
 
-        #Send the game state to the players
-        if left_sock:
-            left_sock.sendall(json.dumps(game_data).encode("utf-8"))
-        if right_sock:
-            right_sock.sendall(json.dumps(game_data).encode("utf-8"))
-        if spec_sock:
-            for c in spec_sock:
-                c.sendall(json.dumps(game_data).encode("utf-8"))
+            #Send the game state to the players
+            if left_sock:
+                left_sock.sendall(json.dumps(game_data).encode("utf-8"))
+            if right_sock:
+                right_sock.sendall(json.dumps(game_data).encode("utf-8"))
+            if spec_sock:
+                for c in spec_sock:
+                    c.sendall(json.dumps(game_data).encode("utf-8"))
 
 
 #These will store the sockets for each role
 left_sock : socket.socket = None
 right_sock : socket.socket = None
+left_sync : int = None
+right_sync : int = None
 spec_sock : list[socket.socket] = list()
 
 #This stores the needed IP and Port to establish a server
-LAN_IP : str = "0.0.0.0"
+LAN_IP : str = "127.0.0.1"
 PORT : int = 50000
 
 #Create the socket and bind it
@@ -201,6 +202,7 @@ client_sockets : list[socket.socket] = list()
 #Listen to the socket for people attempting to connect and start a thread to accept them
 sock.listen()
 threading.Thread(target = acceptor).start()
+
 threading.Thread(target=update_game_vals, daemon=True).start()
 
 try:
