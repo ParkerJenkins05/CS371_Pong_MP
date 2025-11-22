@@ -242,7 +242,37 @@ def joinServer(ip:str, port:str, errorLabel:tk.Label, app:tk.Tk) -> None:
     
     # Create a socket and connect to the server
     # You don't have to use SOCK_STREAM, use what you think is best
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)      # donovan jenkins
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    #get the required information from your server (screen width, height & player paddle, "left or "right")
+    try:
+        client.connect((ip, int(port)))
+        init_raw = client.recv(1024)
+        init_data = json.loads(init_raw.decode("utf-8"))
+
+        screenWidth = int(init_data["screen_width"])
+        screenHeight = int(init_data["screen_height"])
+        paddleSide = init_data["paddle"]
+
+        # start background receive thread
+        t = threading.Thread(target=recv_loop, args=(client,))
+        t.daemon = True
+        t.start()
+
+        # If you have messages you'd like to show the user use the errorLabel widget like so
+        errorLabel.config(text=f"Connected. You are: {paddleSide}")
+        errorLabel.update()
+
+        # Close this window and start the game with the info passed to you from the server
+        app.withdraw()
+        playGame(screenWidth, screenHeight, paddleSide, client)
+        app.quit()
+
+    except Exception as e:
+        errorLabel.config(text=f"Connection failed: {e}")
+        errorLabel.update()
+        client.close()
+        return
 
     # Get the required information from your server (screen width, height & player paddle, "left or "right")
 
