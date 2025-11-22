@@ -25,8 +25,7 @@ game_data = {
     "ball_y": SCREEN_HEIGHT/2,
     "left_score": 0,
     "right_score": 0,
-    "left_sync": 0,
-    "right_sync": 0
+    "max_sync": 0
 }
 
 #Store ball pos and prospective scores to find most updated 
@@ -54,7 +53,6 @@ def acceptor() -> None:
         except socket.timeout:
             pass
 
-#TO FINISH ADD SPECTATOR HANDLING
 def handle_clients( conn : socket.socket) -> None:
     # Author: Parker Jenkins
     # Purpose: Accepts sockets and assigns them roles
@@ -63,62 +61,79 @@ def handle_clients( conn : socket.socket) -> None:
 
     global left_sock, right_sock, spec_sock #define as global so the value is non local
     paddle_side : str
+    left_sync : int
+    right_sync : int
+
     with mutex: #Place mutex lock to ensure only one in each paddle, rest are spectators
         
+        #Add first connection to the left player
         if left_sock is None:
             left_sock = conn
             paddle_side = "left"
+            printf("LEFT SIDE IS: {left_sock}")
 
+        #Add second connection to right side
         elif right_sock is None:
             right_sock = conn
             paddle_side = "right"
+            printf("RIGHT SIDE IS: {right_sock}")
 
+        #Add everyone else to the spectators
         else:
             spec_sock.append(conn)
             paddle_side = "spectator"
         
+    #Create initial game state dictionary to send at the start of the game to each player
     init_game_state : dict = {
         "screen_width" : SCREEN_WIDTH,
         "screen_height" : SCREEN_HEIGHT,
         "paddle" : paddle_side
     }
     try:
+        #Send the initial game state
         conn.sendall(json.dumps(init_game_state).encode("utf-8"))
         
+        #Stay in loop for sending and recieving data
         while True:    
 
+            #If they are a player, recieve and parse data
             if conn not in spec_sock:
                 msg : str = conn.recv(1024) #Recieve Data from client
 
+                #If the message is empty break
                 if not msg:
                     break
 
+                #decode the string, then create a library out of it.
                 data = json.loads(msg.decode("utf-8"))
 
+                #Use a mutex to lock any shared variables
                 with mutex:
 
+                    #Update the game data with the data recieved from the left side
                     if conn == left_sock:
                         game_data["left_paddle_y"] =  data["paddle_y"]
-                        game_data["left_sync"] = data["sync"]
+                        left_sync = data["sync"]
                         left_ball_pos[0] = data["ball_x"]
                         left_ball_pos[1] = data["ball_y"]
                         scores[0][0] = data["lscore"]
                         scores[0][1] = data["rscore"]
+                    #Update the game data with the data recieved from the right side
                     elif conn == right_sock:
                         game_data["right_paddle_y"] =  data["paddle_y"]
-                        game_data["right_sync"] = data["sync"]
+                        right_sync = data["sync"]
                         right_ball_pos[0] = data["ball_x"]
                         right_ball_pos[1] = data["ball_y"]
                         scores[1][0] = data["lscore"]
                         scores[1][1] = data["rscore"]
-
+            #Recieve data from the spectators to ensure the connection is open
             elif conn in spec_sock:
                 msg = conn.recv(1024)
 
+                #If the message was empty, exit the loop
                 if not msg:
                     break
-        #Continue from here to handle clients (reecieve data and send data w funcs and logic to sync)
-
+    #After the try block, clear variables and close connection
     finally:
         with mutex:
            if conn == left_sock:
@@ -144,13 +159,13 @@ def update_game_vals() -> None:
 
         with mutex:
 
-            #If the left sync is higher, it is ahead, so use its values
+            #If the left sync is higher, it is ahead, so use its values for score and ball position
             if game_data["left_sync"] > game_data["right_sync"]:
                 game_data["ball_x"] = left_ball_pos[0]
                 game_data["ball_y"] = left_ball_pos[1]
                 game_data["left_score"] = scores[0][0]
                 game_data["right_score"] = scores[0][1]
-            #If the right side is as updated or ahead, use the stats for the right player
+            #If the right sync is higher, it is ahead, so use its values for score and ball position
             else: 
                 game_data["ball_x"] = right_ball_pos[0]
                 game_data["ball_y"] = right_ball_pos[1]
