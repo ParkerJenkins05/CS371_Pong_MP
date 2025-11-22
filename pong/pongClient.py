@@ -12,9 +12,48 @@ import sys
 import socket
 from PIL import Image, ImageTk
 from pathlib import Path
+import json # added
+import threading # added
 
 from assets.code.helperCode import *
 
+# simple shared state from server
+server_state = {
+    "left_paddle_y": None,
+    "right_paddle_y": None,
+    "ball_x": None,
+    "ball_y": None,
+    "left_score": None,
+    "right_score": None
+}
+state_lock = threading.Lock()
+
+def recv_loop(client:socket.socket) -> None:
+    # background loop that receives game state from the server
+    buffer = ""
+    decoder = json.JSONDecoder()
+    while True:
+        try:
+            data = client.recv(1024)
+            if not data:
+                break
+            buffer += data.decode("utf-8")
+            # try to pull as many full JSON objects available in buffer
+            while buffer:
+                try:
+                    obj, idx = decoder.raw_decode(buffer)
+                except json.JSONDecodeError:        # not enough data for full JSON object
+                    break
+                buffer = buffer[idx:].lstrip()
+
+                with stateLock:
+                    for k in server_state:
+                        if k in obj:
+                            server_state[k] = obj[k]
+        except OSError:
+            break
+        except:
+            break
 # This is the main game loop.  For the most part, you will not need to modify this.  The sections
 # where you should add to the code are marked.  Feel free to change any part of this project
 # to suit your needs.
@@ -62,6 +101,9 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
 
     sync = 0
 
+    netBuffer = ""  # small buffer used to accumulate json from server
+    isSpectator = (playerPaddle == "spectator") # boolean to check if player is a spectator
+
     while True:
         # Wiping the screen
         screen.fill((0,0,0))
@@ -85,11 +127,21 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
         # Your code here to send an update to the server on your paddle's information,
         # where the ball is and the current score.
         # Feel free to change when the score is updated to suit your needs/requirements
-        
-        
-        # =========================================================================================
+        if client is not None and not isSpectator:
+            update_msg = {
+                "paddle_y": int(playerPaddleObj.rect.y),
+                "sync": int(sync),
+                "ball_x": int(ball.rect.x),
+                "ball_y": int(ball.rect.y),
+                "lscore": int(lScore),
+                "rscore": int(rScore)
+            }
+            try:
+                client.sendall(json.dumps(update_msg).encode("utf-8"))
+            except:
+                pass
 
-        # Update the player paddle and opponent paddle's location on the screen
+        # update the player paddle and opponent paddle location on the screen
         for paddle in [playerPaddleObj, opponentPaddleObj]:
             if paddle.moving == "down":
                 if paddle.rect.bottomleft[1] < screenHeight-10:
@@ -98,7 +150,7 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
                 if paddle.rect.topleft[1] > 10:
                     paddle.rect.y -= paddle.speed
 
-        # If the game is over, display the win message
+        # if game is over, display the win message
         if lScore > 4 or rScore > 4:
             winText = "Player 1 Wins! " if lScore > 4 else "Player 2 Wins! "
             textSurface = winFont.render(winText, False, WHITE, (0,0,0))
@@ -107,40 +159,61 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
             winMessage = screen.blit(textSurface, textRect)
         else:
 
-            # ==== Ball Logic =====================================================================
-            ball.updatePos()
+            # ball logic
+            if not isSpectator:
+                ball.updatePos()
 
-            # If the ball makes it past the edge of the screen, update score, etc.
-            if ball.rect.x > screenWidth:
-                lScore += 1
-                pointSound.play()
-                ball.reset(nowGoing="left")
-            elif ball.rect.x < 0:
-                rScore += 1
-                pointSound.play()
-                ball.reset(nowGoing="right")
-                
-            # If the ball hits a paddle
-            if ball.rect.colliderect(playerPaddleObj.rect):
-                bounceSound.play()
-                ball.hitPaddle(playerPaddleObj.rect.center[1])
-            elif ball.rect.colliderect(opponentPaddleObj.rect):
-                bounceSound.play()
-                ball.hitPaddle(opponentPaddleObj.rect.center[1])
-                
-            # If the ball hits a wall
-            if ball.rect.colliderect(topWall) or ball.rect.colliderect(bottomWall):
-                bounceSound.play()
-                ball.hitWall()
+                #if the ball makes it past the edge of the screen
+                if ball.rect.x > screenWidth:
+                    lScore += 1
+                    pointSound.play()
+                    ball.reset(nowGoing="left")
+                elif ball.rect.x < 0:
+                    rScore += 1
+                    pointSound.play()
+                    ball.reset(nowGoing="right")
+                    
+                #if the ball hits a paddle
+                if ball.rect.colliderect(playerPaddleObj.rect):
+                    bounceSound.play()
+                    ball.hitPaddle(playerPaddleObj.rect.center[1])
+                elif ball.rect.colliderect(opponentPaddleObj.rect):
+                    bounceSound.play()
+                    ball.hitPaddle(opponentPaddleObj.rect.center[1])
+                    
+                #if the ball hits a wall
+                if ball.rect.colliderect(topWall) or ball.rect.colliderect(bottomWall):
+                    bounceSound.play()
+                    ball.hitWall()
             
             pygame.draw.rect(screen, WHITE, ball)
-            # ==== End Ball Logic =================================================================
 
-        # Drawing the dotted line in the center
+        # apply latest state from server on top of local logic
+        if client is not None:
+            with state_lock:
+                s = server_state.copy()
+
+            # update paddles from server if values are present
+            if s["left_paddle_y"] is not None:
+                leftPaddle.rect.y = int(s["left_paddle_y"])
+            if s["right_paddle_y"] is not None:
+                rightPaddle.rect.y = int(s["right_paddle_y"])
+
+            # update ball and scores from server if values are present
+            if s["ball_x"] is not None:
+                ball.rect.x = int(s["ball_x"])
+            if s["ball_y"] is not None:
+                ball.rect.y = int(s["ball_y"])
+            if s["left_score"] is not None:
+                lScore = int(s["left_score"])
+            if s["right_score"] is not None:
+                rScore = int(s["right_score"])
+
+        # drawing the dotted line in the center
         for i in centerLine:
             pygame.draw.rect(screen, WHITE, i)
         
-        # Drawing the player's new location
+        #drawing the player's new location
         for paddle in [playerPaddleObj, opponentPaddleObj]:
             pygame.draw.rect(screen, WHITE, paddle)
 
@@ -169,21 +242,9 @@ def joinServer(ip:str, port:str, errorLabel:tk.Label, app:tk.Tk) -> None:
     
     # Create a socket and connect to the server
     # You don't have to use SOCK_STREAM, use what you think is best
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)      # donovan jenkins
 
-    # Get the required information from your server (screen width, height & player paddle, "left or "right)
-
-
-    # If you have messages you'd like to show the user use the errorLabel widget like so
-    errorLabel.config(text=f"Some update text. You input: IP: {ip}, Port: {port}")
-    # You may or may not need to call this, depending on how many times you update the label
-    errorLabel.update()     
-
-    # Close this window and start the game with the info passed to you from the server
-    #app.withdraw()     # Hides the window (we'll kill it later)
-    #playGame(screenWidth, screenHeight, ("left"|"right"|"spectator"), client)  # User will be either left or right paddle
-    #app.quit()         # Kills the window
-
+    # Get the required information from your server (screen width, height & player paddle, "left or "right")
 
 # This displays the opening screen, you don't need to edit this (but may if you like)
 def startScreen():
