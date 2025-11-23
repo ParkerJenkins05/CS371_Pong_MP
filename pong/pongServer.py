@@ -92,6 +92,9 @@ def handle_clients( conn : socket.socket) -> None:
         #Send the initial game state
         conn.sendall(json.dumps(init_game_state).encode("utf-8"))
         
+        while left_sock is None or right_sock is None:
+            conn.recv(1024)
+
         #Stay in loop for sending and recieving data
         while True:    
 
@@ -106,25 +109,23 @@ def handle_clients( conn : socket.socket) -> None:
                 #decode the string, then create a library out of it.
                 data = json.loads(msg.decode("utf-8"))
 
-                #Use a mutex to lock any shared variables
-                with mutex:
-
-                    #Update the game data with the data recieved from the left side
-                    if conn == left_sock:
-                        game_data["left_paddle_y"] =  data["paddle_y"]
-                        left_sync = data["sync"]
-                        left_ball_pos[0] = data["ball_x"]
-                        left_ball_pos[1] = data["ball_y"]
-                        scores[0][0] = data["lscore"]
-                        scores[0][1] = data["rscore"]
-                    #Update the game data with the data recieved from the right side
-                    elif conn == right_sock:
-                        game_data["right_paddle_y"] =  data["paddle_y"]
-                        right_sync = data["sync"]
-                        right_ball_pos[0] = data["ball_x"]
-                        right_ball_pos[1] = data["ball_y"]
-                        scores[1][0] = data["lscore"]
-                        scores[1][1] = data["rscore"]
+                #Update the game data with the data recieved from the left side
+                if conn == left_sock:
+                    game_data["left_paddle_y"] =  data["paddle_y"]
+                    left_sync = data["sync"]
+                    left_ball_pos[0] = data["ball_x"]
+                    left_ball_pos[1] = data["ball_y"]
+                    scores[0][0] = data["lscore"]
+                    scores[0][1] = data["rscore"]
+                    
+                #Update the game data with the data recieved from the right side
+                elif conn == right_sock:
+                    game_data["right_paddle_y"] =  data["paddle_y"]
+                    right_sync = data["sync"]
+                    right_ball_pos[0] = data["ball_x"]
+                    right_ball_pos[1] = data["ball_y"]
+                    scores[1][0] = data["lscore"]
+                    scores[1][1] = data["rscore"]
             #Recieve data from the spectators to ensure the connection is open
             elif conn in spec_sock:
                 msg = conn.recv(1024)
@@ -189,8 +190,8 @@ right_sync : int = None
 spec_sock : list[socket.socket] = list()
 
 #This stores the needed IP and Port to establish a server
-LAN_IP : str = "127.0.0.1"
-PORT : int = 50000
+LAN_IP : str = "0.0.0.0"
+PORT : int = 50001
 
 #Create the socket and bind it
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

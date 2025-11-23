@@ -190,6 +190,7 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
 
         # apply latest state from server on top of local logic
         if client is not None:
+            
             with state_lock:
                 s = server_state.copy()
 
@@ -290,32 +291,28 @@ def startScreen():
     app.logo_image = image  # keep reference so it isn't GC'ed
     titleLabel = tk.Label(app, image=image)
 
-    #titleLabel = tk.Label(image=image)
+    titleLabel = tk.Label(app, image=image)
     titleLabel.grid(column=0, row=0, columnspan=2)
 
-    ipLabel = tk.Label(text="Server IP:")
+    ipLabel = tk.Label(app, text="Server IP:")
     ipLabel.grid(column=0, row=1, sticky="W", padx=8)
 
     ipEntry = tk.Entry(app)
     ipEntry.grid(column=1, row=1)
 
-    portLabel = tk.Label(text="Server Port:")
+    portLabel = tk.Label(app, text="Server Port:")
     portLabel.grid(column=0, row=2, sticky="W", padx=8)
 
     portEntry = tk.Entry(app)
     portEntry.grid(column=1, row=2)
 
-    errorLabel = tk.Label(text="")
+    errorLabel = tk.Label(app, text="")
     errorLabel.grid(column=0, row=4, columnspan=2)
 
-    joinButton = tk.Button(text="Join", command=lambda: joinServer(ipEntry.get(), portEntry.get(), errorLabel, app))
+    joinButton = tk.Button(app, text="Join", command=lambda: joinServer(ipEntry.get(), portEntry.get(), errorLabel, app))
     joinButton.grid(column=0, row=3, columnspan=2)
 
     app.mainloop()
 if __name__ == "__main__":
     startScreen()
     
-    # Uncomment the line below if you want to play the game without a server to see how it should work
-    # the startScreen() function should call playGame with the arguments given to it by the server this is
-    # here for demo purposes only
-    #playGame(640, 480,"left",socket.socket(socket.AF_INET, socket.SOCK_STREAM))
