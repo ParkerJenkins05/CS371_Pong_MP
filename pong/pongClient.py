@@ -24,7 +24,9 @@ server_state = {
     "ball_x": None,
     "ball_y": None,
     "left_score": None,
-    "right_score": None
+    "right_score": None,
+    "max_sync" : None,
+    "num_players" : None
 }
 state_lock = threading.Lock()
 
@@ -160,31 +162,35 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
         else:
 
             # ball logic
-            if not isSpectator:
-                ball.updatePos()
+            if not isSpectator and server_state["num_players"] == 2:
+                with state_lock:
+                    server_sync = server_state["max_sync"]
+                
+                if sync >= server_sync:
+                    ball.updatePos()
 
-                #if the ball makes it past the edge of the screen
-                if ball.rect.x > screenWidth:
-                    lScore += 1
-                    pointSound.play()
-                    ball.reset(nowGoing="left")
-                elif ball.rect.x < 0:
-                    rScore += 1
-                    pointSound.play()
-                    ball.reset(nowGoing="right")
+                    #if the ball makes it past the edge of the screen
+                    if ball.rect.x > screenWidth:
+                        lScore += 1
+                        pointSound.play()
+                        ball.reset(nowGoing="left")
+                    elif ball.rect.x < 0:
+                        rScore += 1
+                        pointSound.play()
+                        ball.reset(nowGoing="right")
                     
-                #if the ball hits a paddle
-                if ball.rect.colliderect(playerPaddleObj.rect):
-                    bounceSound.play()
-                    ball.hitPaddle(playerPaddleObj.rect.center[1])
-                elif ball.rect.colliderect(opponentPaddleObj.rect):
-                    bounceSound.play()
-                    ball.hitPaddle(opponentPaddleObj.rect.center[1])
+                    #if the ball hits a paddle
+                    if ball.rect.colliderect(playerPaddleObj.rect):
+                        bounceSound.play()
+                        ball.hitPaddle(playerPaddleObj.rect.center[1])
+                    elif ball.rect.colliderect(opponentPaddleObj.rect):
+                        bounceSound.play()
+                        ball.hitPaddle(opponentPaddleObj.rect.center[1])
                     
-                #if the ball hits a wall
-                if ball.rect.colliderect(topWall) or ball.rect.colliderect(bottomWall):
-                    bounceSound.play()
-                    ball.hitWall()
+                    #if the ball hits a wall
+                    if ball.rect.colliderect(topWall) or ball.rect.colliderect(bottomWall):
+                        bounceSound.play()
+                        ball.hitWall()
             
             pygame.draw.rect(screen, WHITE, ball)
 
@@ -192,23 +198,48 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
         if client is not None:
             
             with state_lock:
-                s = server_state.copy()
+                 s = server_state.copy()
 
-            # update paddles from server if values are present
-            if s["left_paddle_y"] is not None:
-                leftPaddle.rect.y = int(s["left_paddle_y"])
-            if s["right_paddle_y"] is not None:
-                rightPaddle.rect.y = int(s["right_paddle_y"])
-
+            # For players: use server state only for the opponent
+            if playerPaddle == "left":
+                # my paddle: leftPaddle (local)
+                if s["right_paddle_y"] is not None:
+                    rightPaddle.rect.y = int(s["right_paddle_y"])
+            elif playerPaddle == "right":
+                # my paddle: rightPaddle (local)
+                if s["left_paddle_y"] is not None:
+                    leftPaddle.rect.y = int(s["left_paddle_y"])
+            else:
+                # spectator – mirror both paddles
+                if s["left_paddle_y"] is not None:
+                    leftPaddle.rect.y = int(s["left_paddle_y"])
+                if s["right_paddle_y"] is not None:
+                    rightPaddle.rect.y = int(s["right_paddle_y"])
+                    
             # update ball and scores from server if values are present
-            if s["ball_x"] is not None:
-                ball.rect.x = int(s["ball_x"])
-            if s["ball_y"] is not None:
-                ball.rect.y = int(s["ball_y"])
-            if s["left_score"] is not None:
-                lScore = int(s["left_score"])
-            if s["right_score"] is not None:
-                rScore = int(s["right_score"])
+            if isSpectator:
+                if s["ball_x"] is not None:
+                    ball.rect.x = s["ball_x"]
+                if s["ball_y"] is not None:
+                    ball.rect.y = s["ball_y"]
+                if s["left_score"] is not None:
+                    lScore = s["left_score"]
+                if s["right_score"] is not None:
+                    rScore = s["right_score"]
+            else:
+                server_sync = s["max_sync"]
+                if sync < server_sync:
+                    ball.rect.x = s["ball_x"]
+                    ball.rect.y = s["ball_y"]
+                    lScore = s["left_score"]
+                    rScore = s["right_score"]
+                    sync = server_sync
+            
+            if s["left_score"] is not None and s["left_score"] > lScore:
+                lScore = s["left_score"]
+            if s["right_score"] is not None and s["right_score"] > rScore:
+                rScore = s["right_score"]
+
 
         # drawing the dotted line in the center
         for i in centerLine:

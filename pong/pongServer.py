@@ -16,6 +16,12 @@ SCREEN_WIDTH : int = 480
 SCREEN_HEIGHT : int = 640
 PADDLE_START_Y : int = (SCREEN_HEIGHT/2)
 
+left_sock : socket.socket
+right_sock : socket.socket
+spec_sock : list[socket.socket]
+left_sync : int
+right_sync : int
+
 #Create dictionary to store current game state
 game_data = {
     "left_paddle_y": PADDLE_START_Y,
@@ -24,7 +30,8 @@ game_data = {
     "ball_y": SCREEN_HEIGHT/2,
     "left_score": 0,
     "right_score": 0,
-    "max_sync": 0
+    "max_sync": 0,
+    "num_players" : 0
 }
 
 #Store ball pos and prospective scores to find most updated 
@@ -60,8 +67,7 @@ def handle_clients( conn : socket.socket) -> None:
 
     global left_sock, right_sock, spec_sock #define as global so the value is non local
     paddle_side : str
-    global left_sync
-    global right_sync
+    global left_sync, right_sync
 
     with mutex: #Place mutex lock to ensure only one in each paddle, rest are spectators
         
@@ -70,12 +76,14 @@ def handle_clients( conn : socket.socket) -> None:
             left_sock = conn
             paddle_side = "left"
             print(f"LEFT SIDE IS: {left_sock}")
+            game_data["num_players"] += 1
 
         #Add second connection to right side
         elif right_sock is None:
             right_sock = conn
             paddle_side = "right"
             print(f"RIGHT SIDE IS: {right_sock}")
+            game_data["num_players"] += 1
 
         #Add everyone else to the spectators
         else:
@@ -88,54 +96,67 @@ def handle_clients( conn : socket.socket) -> None:
         "screen_height" : SCREEN_HEIGHT,
         "paddle" : paddle_side
     }
+
+    # Per-connection JSON stream buffer / decoder
+    decoder = json.JSONDecoder()
+    buffer = ""
+
     try:
         #Send the initial game state
         conn.sendall(json.dumps(init_game_state).encode("utf-8"))
-        
-        while left_sock is None or right_sock is None:
-            conn.recv(1024)
+
+        with mutex:
+            initial_update = json.dumps(game_data).encode("utf-8")
+        conn.sendall(initial_update)
 
         #Stay in loop for sending and recieving data
         while True:    
 
-            #If they are a player, recieve and parse data
-            if conn not in spec_sock:
-                msg : str = conn.recv(1024) #Recieve Data from client
+            msg : str = conn.recv(1024) #Recieve Data from client
 
-                #If the message is empty break
-                if not msg:
+            #If the message is empty break
+            if not msg:
+                break
+                
+            # Spectators don't send structured game updates; just keep them alive
+            if conn in spec_sock:
+                continue
+
+            buffer += msg.decode("utf-8")
+
+            # Pull as many complete JSON objects as we can from buffer
+            while buffer:
+                try:
+                    obj, idx = decoder.raw_decode(buffer)
+                except json.JSONDecodeError:
+                    # Not enough data yet for a full JSON object
                     break
 
-                #decode the string, then create a library out of it.
-                data = json.loads(msg.decode("utf-8"))
+                buffer = buffer[idx:].lstrip()
 
-                #Update the game data with the data recieved from the left side
-                if conn == left_sock:
-                    game_data["left_paddle_y"] =  data["paddle_y"]
-                    left_sync = data["sync"]
-                    left_ball_pos[0] = data["ball_x"]
-                    left_ball_pos[1] = data["ball_y"]
-                    scores[0][0] = data["lscore"]
-                    scores[0][1] = data["rscore"]
+                with mutex:
+
+                    #Update the game data with the data recieved from the left side
+                    if conn == left_sock:
+                        game_data["left_paddle_y"] =  obj["paddle_y"]
+                        left_sync = obj["sync"]
+                        left_ball_pos[0] = obj["ball_x"]
+                        left_ball_pos[1] = obj["ball_y"]
+                        scores[0][0] = obj["lscore"]
+                        scores[0][1] = obj["rscore"]
                     
-                #Update the game data with the data recieved from the right side
-                elif conn == right_sock:
-                    game_data["right_paddle_y"] =  data["paddle_y"]
-                    right_sync = data["sync"]
-                    right_ball_pos[0] = data["ball_x"]
-                    right_ball_pos[1] = data["ball_y"]
-                    scores[1][0] = data["lscore"]
-                    scores[1][1] = data["rscore"]
-            #Recieve data from the spectators to ensure the connection is open
-            elif conn in spec_sock:
-                msg = conn.recv(1024)
-
-                #If the message was empty, exit the loop
-                if not msg:
-                    break
+                    #Update the game data with the data recieved from the right side
+                    elif conn == right_sock:
+                        game_data["right_paddle_y"] =  obj["paddle_y"]
+                        right_sync = obj["sync"]
+                        right_ball_pos[0] = obj["ball_x"]
+                        right_ball_pos[1] = obj["ball_y"]
+                        scores[1][0] = obj["lscore"]
+                        scores[1][1] = obj["rscore"]
     #After the try block, clear variables and close connection
     finally:
         with mutex:
+            
            if conn == left_sock:
                left_sock = None
            elif conn == right_sock:
@@ -156,30 +177,52 @@ def update_game_vals() -> None:
 
     while True:
         time.sleep(1/60) #Update 60 times per second, can change update rate in this line
-        if left_sync != None and right_sync != None:
-            with mutex:
+        with mutex:
+
+            if left_sync is not None and right_sync is not None:
+                use_left = left_sync >= right_sync
+                game_data["max_sync"] = max(left_sync, right_sync)
+            elif left_sync is not None:
+                use_left = True
+                game_data["max_sync"] = left_sync
+            elif right_sync is not None:
+                use_left = False
+                game_data["max_sync"] = right_sync
+            else:
+                continue
 
             #If the left sync is higher, it is ahead, so use its values for score and ball position
-                if left_sync > right_sync:
-                    game_data["ball_x"] = left_ball_pos[0]
-                    game_data["ball_y"] = left_ball_pos[1]
-                    game_data["left_score"] = scores[0][0]
-                    game_data["right_score"] = scores[0][1]
+            if use_left:
+                game_data["ball_x"] = left_ball_pos[0]
+                game_data["ball_y"] = left_ball_pos[1]
+                game_data["left_score"] = scores[0][0]
+                game_data["right_score"] = scores[0][1]
             #If the right sync is higher, it is ahead, so use its values for score and ball position
-                else: 
-                    game_data["ball_x"] = right_ball_pos[0]
-                    game_data["ball_y"] = right_ball_pos[1]
-                    game_data["left_score"] = scores[1][0]
-                    game_data["right_score"] = scores[1][1]
+            else: 
+                game_data["ball_x"] = right_ball_pos[0]
+                game_data["ball_y"] = right_ball_pos[1]
+                game_data["left_score"] = scores[1][0]
+                game_data["right_score"] = scores[1][1]
 
-            #Send the game state to the players
-            if left_sock:
-                left_sock.sendall(json.dumps(game_data).encode("utf-8"))
-            if right_sock:
-                right_sock.sendall(json.dumps(game_data).encode("utf-8"))
-            if spec_sock:
-                for c in spec_sock:
-                    c.sendall(json.dumps(game_data).encode("utf-8"))
+            # paddles stay in game_data["left_paddle_y"] / ["right_paddle_y"]
+            payload = json.dumps(game_data).encode("utf-8")
+
+        #Send the game state to the players
+        if left_sock:
+            try:
+                left_sock.sendall(payload)
+            except OSError:
+                pass
+        if right_sock:
+            try:
+                right_sock.sendall(payload)
+            except OSError:
+                pass
+        for c in list(spec_sock):
+            try:
+                c.sendall(payload)
+            except OSError:
+                pass
 
 
 #These will store the sockets for each role
