@@ -162,11 +162,11 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
         else:
 
             # ball logic
-            if not isSpectator and server_state["num_players"] == 2:
+            if not isSpectator and server_state["num_players"] == 2: #Ensure there are two players at start of game
                 with state_lock:
-                    server_sync = server_state["max_sync"]
+                    server_sync = server_state["max_sync"] #Save max sync from server
                 
-                if sync >= server_sync:
+                if sync >= server_sync: #If the current sync is higher than the server synce, use normal game logic
                     ball.updatePos()
 
                     #if the ball makes it past the edge of the screen
@@ -202,22 +202,22 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
 
             # For players: use server state only for the opponent
             if playerPaddle == "left":
-                # my paddle: leftPaddle (local)
+                #Set opponents paddle (Right side)
                 if s["right_paddle_y"] is not None:
                     rightPaddle.rect.y = int(s["right_paddle_y"])
             elif playerPaddle == "right":
-                # my paddle: rightPaddle (local)
+                #Set opponents paddle (Left side)
                 if s["left_paddle_y"] is not None:
                     leftPaddle.rect.y = int(s["left_paddle_y"])
             else:
-                # spectator – mirror both paddles
+                #Set both paddles
                 if s["left_paddle_y"] is not None:
                     leftPaddle.rect.y = int(s["left_paddle_y"])
                 if s["right_paddle_y"] is not None:
                     rightPaddle.rect.y = int(s["right_paddle_y"])
                     
-            # update ball and scores from server if values are present
-            if isSpectator:
+            #Update ball and scores from server if values are present
+            if isSpectator: #If its a spectator pull all values from the server to update
                 if s["ball_x"] is not None:
                     ball.rect.x = s["ball_x"]
                 if s["ball_y"] is not None:
@@ -226,7 +226,7 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
                     lScore = s["left_score"]
                 if s["right_score"] is not None:
                     rScore = s["right_score"]
-            else:
+            else: #If they are a player, check if the sync is behind the server, if so use server data to update
                 server_sync = s["max_sync"]
                 if sync < server_sync:
                     ball.rect.x = s["ball_x"]
@@ -235,6 +235,7 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
                     rScore = s["right_score"]
                     sync = server_sync
             
+            #Ensure both scores are as up to date as possible
             if s["left_score"] is not None and s["left_score"] > lScore:
                 lScore = s["left_score"]
             if s["right_score"] is not None and s["right_score"] > rScore:

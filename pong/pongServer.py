@@ -51,11 +51,11 @@ def acceptor() -> None:
 
     while True:
         try:
-            client_sock, client_addr = sock.accept()
+            client_sock, client_addr = sock.accept() #Accept all clients
             
             with mutex:
-                client_sockets.append(client_sock)
-                threading.Thread( target = handle_clients, args = (client_sock,)).start()
+                client_sockets.append(client_sock) #Append to the client sock list
+                threading.Thread( target = handle_clients, args = (client_sock,)).start() #Start a thread to handle the client
         except socket.timeout:
             pass
 
@@ -105,6 +105,7 @@ def handle_clients( conn : socket.socket) -> None:
         #Send the initial game state
         conn.sendall(json.dumps(init_game_state).encode("utf-8"))
 
+        #Send initial data and immediatly send an "update" to ensure there were no issues establishing the start
         with mutex:
             initial_update = json.dumps(game_data).encode("utf-8")
         conn.sendall(initial_update)
@@ -178,7 +179,8 @@ def update_game_vals() -> None:
     while True:
         time.sleep(1/60) #Update 60 times per second, can change update rate in this line
         with mutex:
-
+            
+            #Decide the dominant player and ensure the max sync matches the clients data
             if left_sync is not None and right_sync is not None:
                 use_left = left_sync >= right_sync
                 game_data["max_sync"] = max(left_sync, right_sync)
@@ -234,7 +236,16 @@ spec_sock : list[socket.socket] = list()
 
 #This stores the needed IP and Port to establish a server
 LAN_IP : str = "0.0.0.0"
-PORT : int = 50001
+PORT : int = 50505
+
+#Get the Ip to enter on other devices
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) #Create a UDP Socket
+s.connect(("8.8.8.8", 80)) #Connect to Googles public DNS server
+LOCAL_IP : str = s.getsockname()[0] #Pull the ip from the tuple returned by getsockname()
+s.close() #Close the connection
+
+#Display the needed information to connect
+print(f"Listening on IP: {LOCAL_IP} and Port: {PORT}")
 
 #Create the socket and bind it
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -247,9 +258,11 @@ client_sockets : list[socket.socket] = list()
 sock.listen()
 threading.Thread(target = acceptor).start()
 
+#Start a thread to update values of the game state based on dominant player
 threading.Thread(target=update_game_vals, daemon=True).start()
 
 try:
+    #Keep the main thread running until a keyboard interrupt
     while True:
        time.sleep(1)
 except KeyboardInterrupt:
