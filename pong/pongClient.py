@@ -192,7 +192,7 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
                         bounceSound.play()
                         ball.hitWall()
             
-            pygame.draw.rect(screen, WHITE, ball)
+            pygame.draw.rect(screen, WHITE, ball.rect)
 
         # apply latest state from server on top of local logic
         if client is not None:
@@ -226,6 +226,7 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
                     lScore = s["left_score"]
                 if s["right_score"] is not None:
                     rScore = s["right_score"]
+            
             else: #If they are a player, check if the sync is behind the server, if so use server data to update
                 server_sync = s["max_sync"]
                 if sync < server_sync:
@@ -253,7 +254,7 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
         pygame.draw.rect(screen, WHITE, topWall)
         pygame.draw.rect(screen, WHITE, bottomWall)
         scoreRect = updateScore(lScore, rScore, screen, WHITE, scoreFont)
-        pygame.display.update([topWall, bottomWall, ball, leftPaddle, rightPaddle, scoreRect, winMessage])
+        pygame.display.flip() #Force a buffer refresh
         clock.tick(60)
         
         # This number should be synchronized between you and your opponent.  If your number is larger

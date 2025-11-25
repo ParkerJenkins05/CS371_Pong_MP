@@ -154,6 +154,10 @@ def handle_clients( conn : socket.socket) -> None:
                         right_ball_pos[1] = obj["ball_y"]
                         scores[1][0] = obj["lscore"]
                         scores[1][1] = obj["rscore"]
+    
+    except (ConnectionResetError, BrokenPipeError, OSError): #Handle expected errors for disconnecting
+        pass
+
     #After the try block, clear variables and close connection
     finally:
         with mutex:
@@ -168,6 +172,7 @@ def handle_clients( conn : socket.socket) -> None:
            if conn in client_sockets:
                client_sockets.remove(conn)
        
+       #Disconnect the client
         conn.close()
 
 def update_game_vals() -> None:
@@ -266,4 +271,8 @@ try:
     while True:
        time.sleep(1)
 except KeyboardInterrupt:
+    #Ensure all client connections are closed in case of previous error
+    if len(client_sockets) != 0:
+        for c in client_sockets:
+            c.close() 
     sock.close()
