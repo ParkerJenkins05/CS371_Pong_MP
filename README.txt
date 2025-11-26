@@ -14,7 +14,7 @@ Github Link: https://github.com/ParkerJenkins05/CS371_Pong_MP/blob/main/pong/pon
 
 General Info
 ============
-This file describes how to install/run your program and anything else you think the user should know
+First, run the line in the install instructions to ensure you have the needed libraries. Then run pongServer.py, both the port and the ip to connect to will be printed in the console. Run a number of clients and use the printed ip and port to connect. The game will start once two players are connected, players move by using the up/down arrows.
 
 Install Instructions
 ====================
