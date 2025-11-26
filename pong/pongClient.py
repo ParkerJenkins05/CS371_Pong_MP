@@ -1,8 +1,14 @@
 # =================================================================================================
-# Contributing Authors:	    <Anyone who touched the code>
-# Email Addresses:          <Your uky.edu email addresses>
-# Date:                     <The date the file was last edited>
-# Purpose:                  <How this file contributes to the project>
+# Contributing Authors:	    Nebojsa Simic, Donovan Jenkins
+# Email Addresses:          nsi255@uky.edu, donovan.jenkins@uky.edu
+# Date:                     11/25/2025
+# Purpose:                  This file implements the client side of the multiplayer Pong system. It 
+# connects to the server through a TCP socket, receives the initial game configuration, and launches 
+# the local Pygame instance. The client gathers input from the user, sends paddle and gameplay updates 
+# back to the server, and applies the server’s authoritative state for ball position, opponent paddle 
+# movement, scoring, and synchronization. It also supports multiple spectators by rendering the game 
+# entirely from server updates. A background networking thread ensures the game loop remains smooth 
+# while maintaining real-time communication with the server.
 # Misc:                     <Not Required.  Anything else you might want to include>
 # =================================================================================================
 
@@ -17,6 +23,12 @@ import threading # added
 
 from assets.code.helperCode import *
 
+# Author: Nebojsa Simic
+# Purpose: Maintain a shared copy of the server's authoritative game state on the client.
+# Pre: Client must already be connected to the server and be receiving JSON updates.
+# Post: The dictionary server state always holds the most recent paddle positions, ball
+#       position, scores, and sync metadata received from the server, protected by state_lock.
+
 # simple shared state from server
 server_state = {
     "left_paddle_y": None,
@@ -29,6 +41,14 @@ server_state = {
     "num_players" : None
 }
 state_lock = threading.Lock()
+
+# Author: Nebojsa Simic
+# Purpose: Run in a background thread to continuously receive and decode JSON game updates
+#          from the server without blocking the main Pygame loop.
+# Pre: The client socket must be connected to the Pong server and sending complete JSON
+#       objects (no delimiters, possibly multiple objects in one TCP packet).
+# Post: Incoming JSON messages are parsed out of the byte stream and used to update
+#       server_state under state_lock so the main game loop can safely read the latest data.
 
 def recv_loop(client:socket.socket) -> None:
     # background loop that receives game state from the server
@@ -129,6 +149,14 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
         # Your code here to send an update to the server on your paddle's information,
         # where the ball is and the current score.
         # Feel free to change when the score is updated to suit your needs/requirements
+        # Author: Donovan Jenkins
+        # Purpose: Send the local player's current paddle position, ball position, score,
+        #           and sync counter to the server so it can decide which client is ahead
+        #           in time and broadcast an authoritative game state.
+        # Pre: The client socket must be connected and the player must not be a spectator.
+        # Post: The server receives one JSON object per frame from this client that can be
+        #       merged with the other player's data to update the global game_data.
+
         if client is not None and not isSpectator:
             update_msg = {
                 "paddle_y": int(playerPaddleObj.rect.y),
@@ -160,6 +188,14 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
             textRect.center = ((screenWidth/2), screenHeight/2)
             winMessage = screen.blit(textSurface, textRect)
         else:
+            # Author: Donovan Jenkins
+            # Purpose: Only advance the local ball physics when there are two active players
+            #       and this client is not behind the server's max sync value.
+            # Pre: server state must be receiving updates from the server and num players
+            #       and max sync must be set correctly by the server thread.
+            # Post: The client advances the ball and handles scoring, paddle hits, and wall
+            #       bounces only when it is caught up in time, which reduces desynchronization
+            #       between the two players.
 
             # ball logic
             if not isSpectator and server_state["num_players"] == 2: #Ensure there are two players at start of game
@@ -193,8 +229,18 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
                         ball.hitWall()
             
             pygame.draw.rect(screen, WHITE, ball.rect)
+        # Author: Donovan Jenkins
+        # Purpose: Blend the server's authoritative state into the local game so that the
+        #          opponent paddle, ball, and scores stay synchronized across both clients.
+        # Pre: server state must have been updated in the recv loop thread and the client
+        #       must still be connected to the server.
+        # Post: Spectators always mirror the server's state, while players update only the
+        #       opponent paddle and correct their own ball and scores when they fall behind
+        #       the server's max_sync value. Local scores are also clamped upward so the UI
+        #       always shows the most recent totals.
 
         # apply latest state from server on top of local logic
+        
         if client is not None:
             
             with state_lock:
@@ -266,6 +312,16 @@ def playGame(screenWidth:int, screenHeight:int, playerPaddle:str, client:socket.
 # the screen width, height and player paddle (either "left" or "right")
 # If you want to hard code the screen's dimensions into the code, that's fine, but you will need to know
 # which client is which
+# Author: Nebojsa Simic
+# Purpose: Connect to the Pong server, receive the initial configuration (screen size
+#           and paddle side), start the background receive thread, and then launch the
+#           Pygame loop with the correct role for this client.
+# Pre:  User must enter a valid server IP and port and the server must be listening
+#       and ready to send an initial JSON config message.
+# Post: On success, the Tkinter lobby window is hidden, a TCP connection is established,
+#       recv_loop begins running in a separate thread, and playGame starts using the
+#       dimensions and paddle side provided by the server.
+
 def joinServer(ip:str, port:str, errorLabel:tk.Label, app:tk.Tk) -> None:
     # Purpose:      This method is fired when the join button is clicked
     # Arguments:
@@ -312,6 +368,13 @@ def joinServer(ip:str, port:str, errorLabel:tk.Label, app:tk.Tk) -> None:
     # Get the required information from your server (screen width, height & player paddle, "left or "right")
 
 # This displays the opening screen, you don't need to edit this (but may if you like)
+    # Author: Nebojsa Simic
+    # Purpose: Load and display the project logo on the join screen using a path
+    #           and a persistent Tkinter image reference to avoid garbage collection.
+    # Pre: The assets folder must exist with logo.png at the expected relative path.
+    # Post: The window shows the logo image correctly on all platforms without the image
+    #       disappearing during runtime.
+
 def startScreen():
     app = tk.Tk()
     app.title("Server Info")
