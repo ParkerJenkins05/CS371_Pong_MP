@@ -3,7 +3,9 @@
 # Email Addresses: prje222@uky.edu 
 # Date: 11/25/2025
 # Purpose: Establishes a server and handles all connections from any client. 
-# Supports 2 players and many spectators for a game of pong.
+# Supports 2 players and many spectators for a game of pong. Sends inital game state to 
+# all clients, receives data from clients, parses data to update game state and send new
+# game state to clients for updating.
 # =================================================================================================
 
 import socket
