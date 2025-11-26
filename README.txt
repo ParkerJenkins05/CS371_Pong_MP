@@ -3,13 +3,14 @@ Contact Info
 
 Group Members & Email Addresses:
 
-    Person 1, person1@uky.edu
-    Person 2, person2@uky.edu
+    Parker Jenkins, prje222@uky.edu
+    Nebojsa Simic, nsi255@uky.edu
+    Donovan Jenkins, Donovan.Jenkins@uky.edu
 
 Versioning
 ==========
 
-Github Link: 
+Github Link: https://github.com/ParkerJenkins05/CS371_Pong_MP/blob/main/pong/pongClient.py
 
 General Info
 ============
@@ -22,8 +23,4 @@ Run the following line to install the required libraries for this project:
 
 `pip3 install -r requirements.txt`
 
-Known Bugs
-==========
-- The server doesn't work because the logic isn't yet written.
-- The client doesn't speak to the server
 
