@@ -1,9 +1,9 @@
 # =================================================================================================
-# Contributing Authors:	    <Anyone who touched the code>
-# Email Addresses:          <Your uky.edu email addresses>
-# Date:                     <The date the file was last edited>
-# Purpose:                  <How this file contributes to the project>
-# Misc:                     <Not Required.  Anything else you might want to include>
+# Contributing Authors:	Parker Jenkins 
+# Email Addresses: prje222@uky.edu 
+# Date: 11/25/2025
+# Purpose: Establishes a server and handles all connections from any client. 
+# Supports 2 players and many spectators for a game of pong.
 # =================================================================================================
 
 import socket
@@ -11,7 +11,7 @@ import threading
 import json
 import time
 
-#Initialization variables used to create game state and initialize the clients
+#Initialization of variables used to create game state and initialize the clients
 SCREEN_WIDTH : int = 480
 SCREEN_HEIGHT : int = 640
 PADDLE_START_Y : int = (SCREEN_HEIGHT/2)
@@ -46,8 +46,8 @@ def acceptor() -> None:
 
 # Author: Parker Jenkins
 # Purpose: Accepts sockets and adds them to a list to track who is connected
-# Pre: This method expects there to be clients not assigned a role
-# Post: This method assigns users a role and allows them to start sending and recieving data
+# Pre: This method expects there to be clients attempting to connect
+# Post: This method assigns users a role and allows them to start sending and recieving data as necessary
 
     while True:
         try:
@@ -65,9 +65,9 @@ def handle_clients( conn : socket.socket) -> None:
     # Pre: This method expects there to be clients attempting to connect
     # Post: This method changes one of the global variables to store sockets with one pointing to the proper client
 
-    global left_sock, right_sock, spec_sock #define as global so the value is non local
-    paddle_side : str
-    global left_sync, right_sync
+    global left_sock, right_sock, spec_sock #Define as global so the value is non local for player possitions and their sockets
+    paddle_side : str #Holds player position to send to client
+    global left_sync, right_sync #Define as global for access of the players' sync across threads
 
     with mutex: #Place mutex lock to ensure only one in each paddle, rest are spectators
         
@@ -97,7 +97,7 @@ def handle_clients( conn : socket.socket) -> None:
         "paddle" : paddle_side
     }
 
-    # Per-connection JSON stream buffer / decoder
+    #Per-connection JSON stream buffer / decoder
     decoder = json.JSONDecoder()
     buffer = ""
 
@@ -105,7 +105,7 @@ def handle_clients( conn : socket.socket) -> None:
         #Send the initial game state
         conn.sendall(json.dumps(init_game_state).encode("utf-8"))
 
-        #Send initial data and immediatly send an "update" to ensure there were no issues establishing the start
+        #Send initial data and immediatly send an "update" to ensure there were no issues establishing the start screen
         with mutex:
             initial_update = json.dumps(game_data).encode("utf-8")
         conn.sendall(initial_update)
@@ -123,7 +123,7 @@ def handle_clients( conn : socket.socket) -> None:
             if conn in spec_sock:
                 continue
 
-            buffer += msg.decode("utf-8")
+            buffer += msg.decode("utf-8") #Add the message to the buffer
 
             # Pull as many complete JSON objects as we can from buffer
             while buffer:
@@ -135,7 +135,7 @@ def handle_clients( conn : socket.socket) -> None:
 
                 buffer = buffer[idx:].lstrip()
 
-                with mutex:
+                with mutex: #Lock threads to ensure no race conditions while updating the game state
 
                     #Update the game data with the data recieved from the left side
                     if conn == left_sock:
@@ -211,10 +211,11 @@ def update_game_vals() -> None:
                 game_data["left_score"] = scores[1][0]
                 game_data["right_score"] = scores[1][1]
 
-            # paddles stay in game_data["left_paddle_y"] / ["right_paddle_y"]
+            #Paddles stay in game_data["left_paddle_y"] / ["right_paddle_y"]
+            #Create json of updated game state ready to send
             payload = json.dumps(game_data).encode("utf-8")
 
-        #Send the game state to the players
+        #Send the game state to the players and prevenet errors for stopping exectution
         if left_sock:
             try:
                 left_sock.sendall(payload)
