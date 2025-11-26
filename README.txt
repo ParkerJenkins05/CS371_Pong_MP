@@ -10,7 +10,7 @@ Group Members & Email Addresses:
 Versioning
 ==========
 
-Github Link: https://github.com/ParkerJenkins05/CS371_Pong_MP/blob/main/pong/pongClient.py
+Github Link: https://github.com/ParkerJenkins05/CS371_Pong_MP/tree/main
 
 General Info
 ============
